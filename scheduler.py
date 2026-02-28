@@ -25,6 +25,10 @@ class DailyScheduler:
         
         # Schedule daily task
         schedule.every().day.at(self.config.DAILY_TIME).do(self._schedule_daily_post)
+
+        # Schedule special non-leap-year birthday messages
+        schedule.every().day.at('22:00').do(self._schedule_february_warning_post)
+        schedule.every().day.at('00:05').do(self._schedule_march_erasure_post)
         
         # Run scheduler loop
         while self.running:
@@ -47,6 +51,21 @@ class DailyScheduler:
         except Exception as e:
             logger.error(f"Error scheduling daily post: {e}")
     
+
+    def _schedule_february_warning_post(self):
+        """Schedule Feb 28 warning message check"""
+        try:
+            asyncio.create_task(self._execute_february_warning_post())
+        except Exception as e:
+            logger.error(f"Error scheduling Feb 28 warning post: {e}")
+
+    def _schedule_march_erasure_post(self):
+        """Schedule Mar 1 erasure message check"""
+        try:
+            asyncio.create_task(self._execute_march_erasure_post())
+        except Exception as e:
+            logger.error(f"Error scheduling March erasure post: {e}")
+
     async def _execute_daily_post(self):
         """Execute the daily character post"""
         try:
@@ -75,6 +94,27 @@ class DailyScheduler:
         except Exception as e:
             logger.error(f"Error executing daily post: {e}")
     
+
+    async def _execute_february_warning_post(self):
+        """Execute Feb 28 10:00 PM warning message (non-leap-year only)"""
+        try:
+            if not self.bot.is_ready():
+                await self.bot.wait_until_ready()
+
+            await self.bot.send_february_birthday_warning_message()
+        except Exception as e:
+            logger.error(f"Error executing Feb 28 warning post: {e}")
+
+    async def _execute_march_erasure_post(self):
+        """Execute Mar 1 12:05 AM erasure message (when Feb 29 did not occur)"""
+        try:
+            if not self.bot.is_ready():
+                await self.bot.wait_until_ready()
+
+            await self.bot.send_march_first_erasure_message()
+        except Exception as e:
+            logger.error(f"Error executing March erasure post: {e}")
+
     def stop(self):
         """Stop the scheduler"""
         self.running = False
