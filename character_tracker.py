@@ -87,7 +87,7 @@ class CharacterTracker:
         except Exception:
             return date_str  # Return as-is if parsing fails
     
-    async def get_character_stats(self, time_frame='all'):
+    async def get_character_stats(self, time_frame='all', year=None):
         """Get character statistics for the specified time frame"""
         try:
             # Calculate date cutoff based on time frame
@@ -97,7 +97,11 @@ class CharacterTracker:
             elif time_frame == 'month':
                 cutoff_date = today - timedelta(days=29)  # Last 30 days including today
             elif time_frame == 'year':
-                cutoff_date = today - timedelta(days=364)  # Last 365 days including today
+                # Optional specific-year mode (e.g., !bread year 2025)
+                if year is not None:
+                    cutoff_date = None
+                else:
+                    cutoff_date = today - timedelta(days=364)  # Last 365 days including today
             else:  # 'all'
                 cutoff_date = datetime(2000, 1, 1).date()  # Far in the past
             
@@ -110,7 +114,10 @@ class CharacterTracker:
                 entry_date = datetime.fromisoformat(normalized_date).date()
                 
                 # Skip entries outside time frame
-                if entry_date < cutoff_date:
+                if time_frame == 'year' and year is not None:
+                    if entry_date.year != year:
+                        continue
+                elif entry_date < cutoff_date:
                     continue
                 
                 # Initialize character entry if not exists
@@ -149,9 +156,11 @@ class CharacterTracker:
             logger.error(f"Error getting character stats: {e}")
             return []
     
-    async def format_bread_message(self, stats, time_frame='all'):
+    async def format_bread_message(self, stats, time_frame='all', year=None):
         """Format the bread command output with proper alignment"""
         if not stats:
+            if time_frame == 'year' and year is not None:
+                return f"📊 No character data available for year {year}."
             return f"📊 No character data available for {time_frame} timeframe."
         
         # Time frame headers
@@ -162,7 +171,10 @@ class CharacterTracker:
             'year': '📊 Character of the Day Stats (Last Year)'
         }
         
-        header = time_headers.get(time_frame, '📊 Character of the Day Stats')
+        if time_frame == 'year' and year is not None:
+            header = f'📊 Character of the Day Stats ({year})'
+        else:
+            header = time_headers.get(time_frame, '📊 Character of the Day Stats')
         
         # Calculate max widths for alignment
         max_name_width = max(len(stat['character_name']) for stat in stats)

@@ -12,7 +12,7 @@ from io import BytesIO
 from PIL import Image
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from scraper import CharacterScraper
 from birthday_scraper import BirthdayScraper
 from notification_manager import NotificationManager
@@ -179,8 +179,8 @@ class CharacterBot(commands.Bot):
                 logger.error(f"Error in birthdays command: {e}")
                 await ctx.send("❌ Error fetching birthday information. Please try again later.")
         
-        @self.command(name='bread', help='Show character of the day statistics (!bread "week, month, year")')
-        async def bread_command(ctx, timeframe: str = 'all'):
+        @self.command(name='bread', help='Show character stats (!bread [all|week|month|year [YYYY]])')
+        async def bread_command(ctx, timeframe: str = 'all', year: str = None):
             """Show character of the day statistics with optional time frame"""
             try:
                 # Validate timeframe
@@ -190,22 +190,33 @@ class CharacterBot(commands.Bot):
                     return
                 
                 timeframe = timeframe.lower()
+
+                # Optional specific year support: !bread year 2025
+                target_year = None
+                if timeframe == 'year' and year is not None:
+                    if not year.isdigit() or len(year) != 4:
+                        await ctx.send("❌ Invalid year format. Use: `!bread year YYYY` (example: `!bread year 2025`).")
+                        return
+                    target_year = int(year)
                 
                 # Get character statistics
-                stats = await self.character_tracker.get_character_stats(timeframe)
+                stats = await self.character_tracker.get_character_stats(timeframe, target_year)
                 
                 if not stats:
-                    time_desc = {
-                        'all': 'all time',
-                        'week': 'the last 7 days', 
-                        'month': 'the last 30 days',
-                        'year': 'the last year'
-                    }[timeframe]
+                    if timeframe == 'year' and target_year is not None:
+                        time_desc = f"year {target_year}"
+                    else:
+                        time_desc = {
+                            'all': 'all time',
+                            'week': 'the last 7 days', 
+                            'month': 'the last 30 days',
+                            'year': 'the last year'
+                        }[timeframe]
                     await ctx.send(f"📊 No character data available for {time_desc}.")
                     return
                 
                 # Format and send the message
-                formatted_message = await self.character_tracker.format_bread_message(stats, timeframe)
+                formatted_message = await self.character_tracker.format_bread_message(stats, timeframe, target_year)
                 
                 # Split message if too long for Discord
                 if len(formatted_message) > 2000:
@@ -227,7 +238,7 @@ class CharacterBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error in bread command: {e}")
                 await ctx.send("❌ Error fetching character statistics. Please try again later.")
-        
+
         @self.command(name='notifyme', help='Subscribe to daily character and birthday notifications')
         async def notifyme_command(ctx):
             """Subscribe user to daily notifications"""
@@ -316,6 +327,50 @@ class CharacterBot(commands.Bot):
                 logger.error(f"Error in update command: {e}")
                 await ctx.send(f"❌ Error: {str(e)}")
     
+    async def send_february_birthday_warning_message(self):
+        """Send Feb 28 10:00 PM message when next day is not leap day."""
+        try:
+            channel_id = self.config.DISCORD_CHANNEL_ID
+            if not channel_id:
+                logger.error("DISCORD_CHANNEL_ID not configured")
+                return False
+
+            today = datetime.now().date()
+            tomorrow = today + timedelta(days=1)
+            if today.month == 2 and today.day == 28 and not (tomorrow.month == 2 and tomorrow.day == 29):
+                channel = self.get_channel(int(channel_id))
+                if channel:
+                    await channel.send("at midnight the 29th arrives, and so does my birthday.. bring cake and presents!")
+                    logger.info("Posted Feb 28 birthday warning message")
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error sending Feb 28 birthday warning message: {e}")
+            return False
+
+    async def send_march_first_erasure_message(self):
+        """Send Mar 1 12:05 AM message when the previous day was not leap day."""
+        try:
+            channel_id = self.config.DISCORD_CHANNEL_ID
+            if not channel_id:
+                logger.error("DISCORD_CHANNEL_ID not configured")
+                return False
+
+            today = datetime.now().date()
+            yesterday = today - timedelta(days=1)
+            if today.month == 3 and today.day == 1 and not (yesterday.month == 2 and yesterday.day == 29):
+                channel = self.get_channel(int(channel_id))
+                if channel:
+                    await channel.send("i have reviewed the calendar.. it appears some evil entity has erased my birthday from existence! mizue claims this is “normal” but she may already be under its influence...")
+                    logger.info("Posted March 1 erasure message")
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error sending March 1 erasure message: {e}")
+            return False
+
     async def post_daily_character(self, send_notifications=True):
         """Post daily character update to the configured channel"""
         async with self.posting_lock:  # Prevent concurrent posting
